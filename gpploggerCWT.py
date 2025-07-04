@@ -2,7 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 gpp_tk_gui.py – GPP-4323 live resistance dashboard
-v1.2 • fullscreen start • log-frequency selector • hourly Excel
+v1.2  (compact freq-selector, visible version label)
+
+• 2×2 buttons (Start/Stop, Check/Stop Check, Save XLSX, Clear Cache)
+• Log frequency radio row: 5 s 15 s 30 s 1 min 5 min
+• Version tag shown top-left
+• Hourly Excel, live change interval, Y-axis 8-15 Ω
 """
 
 __version__ = "v1.2"
@@ -194,10 +199,10 @@ class App(tk.Tk):
         self.ax.set_xlabel("time"); self.ax.set_ylabel("R (Ω)")
         self.ax.set_ylim(Y_MIN_DFLT,Y_MAX_DFLT)
         self.ax.xaxis.set_major_formatter(mdates.DateFormatter("%d-%b\n%H:%M"))
-        fig.subplots_adjust(right=0.78,top=0.97)
+        fig.subplots_adjust(left=0.05,right=0.75,top=0.97,bottom=0.3)
         self.lines=[self.ax.plot([],[],label=f"CH{i}")[0] for i in range(1,5)]
-        self.leg=self.ax.legend(loc="center left",bbox_to_anchor=(1.02,0.5),
-                                fontsize=16)
+        self.leg=self.ax.legend(loc="center left",
+                                bbox_to_anchor=(1,0.5),fontsize=16)
         self.canvas=FigureCanvasTkAgg(fig,master=self)
         self.canvas.get_tk_widget().grid(row=2,column=0,sticky="nsew",
                                          padx=8,pady=4)
