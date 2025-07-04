@@ -1,4 +1,3 @@
-python
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -9,19 +8,26 @@ v1.2 • fullscreen start • log-frequency selector • hourly Excel
 __version__ = "v1.2"
 
 # ──── stdlib ─────────────────────────────────────────────────────
-import csv, math, time, threading, datetime as dt
+import csv, math, time, threading, datetime as dt, sys
 from pathlib import Path
 from collections import deque
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 # ──── 3rd-party ──────────────────────────────────────────────────
-import numpy as np, matplotlib
-matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt, matplotlib.dates as mdates
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import pyvisa, pyvisa.constants as C
-import xlsxwriter
+try:
+    import numpy as np
+    import matplotlib
+    matplotlib.use("TkAgg")
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    import pyvisa
+    import pyvisa.constants as C
+    import xlsxwriter
+except ModuleNotFoundError as e:
+    print(f"Missing required module: {e.name}", file=sys.stderr)
+    sys.exit(1)
 
 # ──── constants ─────────────────────────────────────────────────
 PORT, BAUD = "/dev/ttyUSB0", 115200
@@ -59,10 +65,28 @@ def safe_R(psu, ch):
 
 # ──── CSV / Excel helpers ────────────────────────────────────────
 def ensure_raw():
-    if RAW_CSV.exists(): return
+    if RAW_CSV.exists():
+        return
     with RAW_CSV.open("w", newline="") as f:
         f.write("#xlsx:\n")
         csv.writer(f).writerow(["time","rel_h","R1","R2","R3","R4"])
+
+def prompt_existing_csv():
+    if not RAW_CSV.exists() or RAW_CSV.stat().st_size == 0:
+        return
+    with RAW_CSV.open() as f:
+        data_found = any(line.strip() and not line.startswith("#") for line in f)
+    if not data_found:
+        return
+    if messagebox.askyesno(
+            "Existing Log",
+            "raw.csv contains previous data. Continue using it?\n"
+            "Choose 'No' to start fresh."):
+        return
+    if messagebox.askyesno(
+            "Confirm Delete",
+            "Delete existing raw.csv and start with a blank log?"):
+        RAW_CSV.unlink()
 
 def current_xlsx():
     with RAW_CSV.open() as f:
@@ -179,6 +203,7 @@ class App(tk.Tk):
                                          padx=8,pady=4)
 
         # runtime
+        prompt_existing_csv()
         ensure_raw()
         self.t,self.r=self._load_cache()
         self.psu=None; self.mode=None
