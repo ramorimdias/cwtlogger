@@ -43,7 +43,6 @@ MAX_POINTS  = 20_000
 Y_MIN_DFLT, Y_MAX_DFLT = 8.0, 15.0
 FREQ_OPTIONS = [("5 s", 5), ("15 s", 15), ("30 s", 30),
                 ("1 min", 60), ("5 min", 300)]
-CHAN_LABELS = ["CH1", "CH2", "CH3", "CH4"]
 LOG_DIR = Path.home() / "gpp_logs"; LOG_DIR.mkdir(exist_ok=True)
 RAW_CSV = LOG_DIR / "raw.csv"
 
@@ -75,7 +74,7 @@ def ensure_raw():
         return
     with RAW_CSV.open("w", newline="") as f:
         f.write("#xlsx:\n")
-        csv.writer(f).writerow(["time","rel_h",*CHAN_LABELS])
+        csv.writer(f).writerow(["time","rel_h","R1","R2","R3","R4"])
 
 def prompt_existing_csv():
     if not RAW_CSV.exists() or RAW_CSV.stat().st_size == 0:
@@ -119,13 +118,14 @@ def csv_to_xlsx(csv_path: Path, xlsx_path: Path):
             elif val and (c==0 or math.isfinite(float(val))):
                 ws_d.write(r,c,val if c==0 else float(val))
     max_row=len(rows)-1
-    for col,label in enumerate(CHAN_LABELS,2):
-        col_letter=xlsxwriter.utility.xl_col_to_name(col)
-        chart.add_series({
-            "name":label,
-            "categories":f"=Data!$B$2:$B${max_row+1}",
-            "values":   f"=Data!${col_letter}$2:${col_letter}${max_row+1}",
-        })
+    for col,label in enumerate(("R1","R2","R3","R4"),2):
+        if any(rows[r][col] for r in range(1,len(rows))):
+            col_letter=xlsxwriter.utility.xl_col_to_name(col)
+            chart.add_series({
+                "name":label,
+                "categories":f"=Data!$B$2:$B${max_row+1}",
+                "values":   f"=Data!${col_letter}$2:${col_letter}${max_row+1}",
+            })
     chart.set_x_axis({"name":"Hours from start"})
     chart.set_y_axis({"name":"R (Ω)"})
     ws_c.insert_chart("B2", chart, {"x_scale":1.5,"y_scale":1.3})
@@ -156,9 +156,9 @@ class App(tk.Tk):
         ctrl.grid(row=1,column=0,sticky="ew",padx=8,pady=(0,4))
         ctrl.columnconfigure(9,weight=2)
 
-        self.chk=[tk.BooleanVar() for _ in CHAN_LABELS]
-        for i,(v,label) in enumerate(zip(self.chk, CHAN_LABELS),1):
-            ttk.Checkbutton(ctrl,text=label,variable=v)\
+        self.chk=[tk.BooleanVar() for _ in range(4)]
+        for i,v in enumerate(self.chk,1):
+            ttk.Checkbutton(ctrl,text=f"CH{i}",variable=v)\
                .grid(row=0,column=i-1,padx=8,sticky="w")
 
         def spin(r,label,u,init,step,name):
@@ -199,12 +199,9 @@ class App(tk.Tk):
         fig,self.ax=plt.subplots(figsize=(8,5))
         self.ax.set_xlabel("time"); self.ax.set_ylabel("R (Ω)")
         self.ax.set_ylim(Y_MIN_DFLT,Y_MAX_DFLT)
-        self.locator = mdates.AutoDateLocator(minticks=5, maxticks=10)
-        self.locator.intervald.setdefault(mdates.MINUTELY,[1,2,5,10,15,30])
-        self.ax.xaxis.set_major_locator(self.locator)
         self.ax.xaxis.set_major_formatter(mdates.DateFormatter("%d-%b\n%H:%M"))
         fig.subplots_adjust(left=0.05,right=0.75,top=0.97,bottom=0.3)
-        self.lines=[self.ax.plot([],[],label=lbl)[0] for lbl in CHAN_LABELS]
+        self.lines=[self.ax.plot([],[],label=f"CH{i}")[0] for i in range(1,5)]
         self.leg=self.ax.legend(loc="center left",
                                 bbox_to_anchor=(1,0.5),fontsize=16)
         self.canvas=FigureCanvasTkAgg(fig,master=self)
@@ -235,13 +232,13 @@ class App(tk.Tk):
 
     def _load_cache(self):
         t=deque(maxlen=MAX_POINTS)
-        r=[deque(maxlen=MAX_POINTS) for _ in CHAN_LABELS]
+        r=[deque(maxlen=MAX_POINTS) for _ in range(4)]
         with RAW_CSV.open() as f:
             rdr=csv.reader(l for l in f if not l.startswith("#"))
             next(rdr,None)
             for row in rdr:
                 t.append(mdates.datestr2num(row[0]))
-                for i,val in enumerate(row[2:2+len(CHAN_LABELS)]):
+                for i,val in enumerate(row[2:6]):
                     r[i].append(float(val) if val else np.nan)
         return t,r
 
@@ -257,13 +254,13 @@ class App(tk.Tk):
             while not self.stop_evt.is_set():
                 now=dt.datetime.now(); rel=(now-self.t0).total_seconds()/3600
                 self.t.append(mdates.date2num(now))
-                for idx,ch in enumerate(range(1,len(CHAN_LABELS)+1)):
+                for idx,ch in enumerate(range(1,5)):
                     self.r[idx].append(safe_R(self.psu,ch)
                                        if ch in chans else np.nan)
                 w.writerow([now.strftime("%Y-%m-%d %H:%M:%S"),
                             f"{rel:.4f}"]+[ "" if np.isnan(self.r[i][-1])
                                             else f"{self.r[i][-1]:.4f}"
-                                            for i in range(len(CHAN_LABELS))])
+                                            for i in range(4)])
                 f.flush()
                 if now>=self.next_xlsx:
                     csv_to_xlsx(RAW_CSV,excel)
@@ -281,9 +278,8 @@ class App(tk.Tk):
                 y=np.array(list(self.r[idx])[i0:],float); y[np.isinf(y)]=np.nan
                 ln.set_data(x,y)
                 v=y[-1] if len(y) else np.nan
-                label=CHAN_LABELS[idx]
-                live.append(f"{label}: ---" if np.isnan(v)
-                            else f"{label}: {v:.3f} Ω")
+                live.append(f"CH{idx+1}: ---" if np.isnan(v)
+                            else f"CH{idx+1}: {v:.3f} Ω")
             for txt,new in zip(self.leg.get_texts(),live): txt.set_text(new)
             if len(x)>1: self.ax.set_xlim(x[0],x[-1])
             self.canvas.draw_idle()
@@ -324,8 +320,7 @@ class App(tk.Tk):
         if not messagebox.askyesno("Stop","Stop current operation?"): return
         self.stop_evt.set(); self.thread.join()
         try:
-            for ch in range(1, len(CHAN_LABELS)+1):
-                chan_off(self.psu,ch)
+            for ch in range(1,5): chan_off(self.psu,ch)
             self.psu.close()
         except: pass
         if self.after_id:
