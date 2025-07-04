@@ -154,39 +154,47 @@ class App(tk.Tk):
         # control frame
         ctrl=ttk.LabelFrame(self,text="Controls")
         ctrl.grid(row=1,column=0,sticky="ew",padx=8,pady=(0,4))
-        ctrl.columnconfigure(9,weight=2)
+        ctrl.columnconfigure(0,weight=1)
+        ctrl.columnconfigure(1,weight=1)
 
+        # split control frame in two columns
+        ctrl_left=ttk.Frame(ctrl)
+        ctrl_left.grid(row=0,column=0,sticky="nw")
+        ctrl_left.columnconfigure(1,weight=1)
+        ctrl_right=ttk.Frame(ctrl)
+        ctrl_right.grid(row=0,column=1,sticky="ne",padx=(20,0))
+
+        # channel checkboxes
         self.chk=[tk.BooleanVar() for _ in range(4)]
         for i,v in enumerate(self.chk,1):
-            ttk.Checkbutton(ctrl,text=f"CH{i}",variable=v)\
-               .grid(row=0,column=i-1,padx=8,sticky="w")
+            ttk.Checkbutton(ctrl_left,text=f"CH{i}",variable=v)\
+               .grid(row=0,column=i-1,padx=4,sticky="w")
 
-        def spin(r,label,u,init,step,name):
-            ttk.Label(ctrl,text=label).grid(row=r,column=0,sticky="e")
-            setattr(self,name,tk.DoubleVar(value=init))
-            ttk.Entry(ctrl,width=8,textvariable=getattr(self,name))\
-               .grid(row=r,column=1,sticky="w")
-            for txt,d,col in ((" – ",-step,2),(" + ",step,3)):
-                ttk.Button(ctrl,text=txt,width=3,
-                           command=lambda n=name,dd=d:self._bump(n,dd))\
-                           .grid(row=r,column=col)
-            ttk.Label(ctrl,text=u).grid(row=r,column=4,sticky="w")
-        spin(1,"Max current:","A",0.100,0.010,"i_var")
-        spin(2,"Y-min:","Ω",Y_MIN_DFLT,1.0,"ymin_var")
-        spin(3,"Y-max:","Ω",Y_MAX_DFLT,1.0,"ymax_var")
-        ttk.Button(ctrl,text="Set Y-axis",command=self.apply_y)\
-            .grid(row=2,column=5,rowspan=2,padx=(10,0),pady=8)
-
-        # freq selector
-        ttk.Label(ctrl,text="Log every:").grid(row=0,column=5,sticky="e")
+        # frequency selector below checkboxes
+        ttk.Label(ctrl_left,text="Log every:").grid(row=1,column=0,sticky="e")
         self.sample_int=tk.IntVar(value=5)
-        freq_frame=ttk.Frame(ctrl); freq_frame.grid(row=0,column=6,columnspan=3,sticky="w")
+        freq_frame=ttk.Frame(ctrl_left)
+        freq_frame.grid(row=1,column=1,columnspan=3,sticky="w")
         for lbl,val in FREQ_OPTIONS:
             ttk.Radiobutton(freq_frame,text=lbl,variable=self.sample_int,
                             value=val).pack(side="left",padx=2)
 
+        # numeric spinboxes
+        def spin(r,label,u,init,step,name):
+            ttk.Label(ctrl_left,text=label).grid(row=r,column=0,sticky="e")
+            var=tk.DoubleVar(value=init); setattr(self,name,var)
+            ttk.Spinbox(ctrl_left,from_=0,increment=step,width=7,
+                        textvariable=var).grid(row=r,column=1,sticky="w")
+            ttk.Label(ctrl_left,text=u).grid(row=r,column=2,sticky="w")
+        spin(2,"Max current:","A",0.100,0.010,"i_var")
+        spin(3,"Y-min:","Ω",Y_MIN_DFLT,1.0,"ymin_var")
+        spin(4,"Y-max:","Ω",Y_MAX_DFLT,1.0,"ymax_var")
+        ttk.Button(ctrl_left,text="Set Y-axis",command=self.apply_y)\
+            .grid(row=5,column=0,columnspan=3,pady=8)
+
         # buttons (2×2)
-        btns=ttk.Frame(ctrl); btns.grid(row=1,column=6,columnspan=4,rowspan=4,padx=(20,0))
+        btns=ttk.Frame(ctrl_right)
+        btns.grid(row=0,column=0)
         self.start_btn=ttk.Button(btns,text="Start",width=16,command=self.start_log)
         self.check_btn=ttk.Button(btns,text="Check",width=16,command=self.check_toggle)
         self.save_btn =ttk.Button(btns,text="Save XLSX",width=16,command=self.save_xlsx)
@@ -220,10 +228,6 @@ class App(tk.Tk):
     # helpers
     def _toggle_full(self):
         self.full=not self.full; self.attributes("-fullscreen",self.full)
-
-    def _bump(self,name,d):
-        try:v=getattr(self,name).get()+d; getattr(self,name).set(round(v,3))
-        except tk.TclError: pass
 
     def apply_y(self):
         ymin,ymax=self.ymin_var.get(),self.ymax_var.get()
