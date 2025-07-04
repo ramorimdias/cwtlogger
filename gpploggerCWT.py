@@ -75,9 +75,10 @@ def prompt_existing_csv():
     if not RAW_CSV.exists() or RAW_CSV.stat().st_size == 0:
         return
     with RAW_CSV.open() as f:
-        data_found = any(line.strip() and not line.startswith("#") for line in f)
-    if not data_found:
-        return
+        lines = (ln for ln in f if not ln.startswith("#"))
+        next(lines, None)  # skip header if present
+        if not any(ln.strip() for ln in lines):
+            return
     if messagebox.askyesno(
             "Existing Log",
             "raw.csv contains previous data. Continue using it?\n"
